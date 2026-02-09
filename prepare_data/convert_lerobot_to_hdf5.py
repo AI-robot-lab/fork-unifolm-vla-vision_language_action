@@ -1,4 +1,48 @@
 """
+convert_lerobot_to_hdf5.py - Konwersja danych z formatu LeRobot do HDF5
+
+OPIS PO POLSKU:
+Ten skrypt konwertuje dane robotyczne z formatu LeRobot V2.1 (HuggingFace)
+do formatu HDF5, który jest pośrednim krokiem przed RLDS (TensorFlow Datasets).
+
+DLACZEGO TA KONWERSJA?
+LeRobot → HDF5 → RLDS to standard pipeline przygotowania danych:
+1. LeRobot: Format zbierania danych (user-friendly)
+2. HDF5: Efektywny format przechowywania (hierarchiczny)
+3. RLDS: Format treningowy (TensorFlow, zoptymalizowany pod dataloader)
+
+FORMAT LEROBOT:
+- Bazuje na HuggingFace Datasets
+- Organizacja po epizodach (episode = pełna demonstracja zadania)
+- Video jako kompresowane pliki (oszczędność miejsca)
+- Metadane w JSON/Parquet
+
+FORMAT HDF5 (OUTPUT):
+- Hierarchiczny format binarny (szybki dostęp)
+- Struktura:
+  episode_0/
+    observation/
+      image: [T, H, W, 3] uint8
+      state: [T, PROPRIO_DIM] float32
+    action: [T, ACTION_DIM] float32
+    instruction: str
+  episode_1/
+    ...
+
+UŻYCIE:
+python prepare_data/convert_lerobot_to_hdf5.py \
+    --data_path /path/to/lerobot/dataset \
+    --target_path /path/to/save/hdf5
+
+PRZYKŁAD:
+python prepare_data/convert_lerobot_to_hdf5.py \
+    --data_path /data/g1_stack_block_lerobot \
+    --target_path /data/g1_stack_block_hdf5
+
+PARAMETRY:
+--data_path: Ścieżka do datasetu LeRobot (folder z parquet files)
+--target_path: Gdzie zapisać skonwertowane pliki HDF5
+
 Script lerobot to h5.
 # --repo-id     Your unique repo ID on Hugging Face Hub
 # --output_dir  Save path to h5 file
@@ -21,27 +65,83 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 
 class LeRobotDataProcessor:
+    """
+    Procesor danych LeRobot do konwersji na HDF5.
+    
+    OPIS PO POLSKU:
+    Klasa odpowiedzialna za:
+    1. Wczytanie datasetu LeRobot
+    2. Ekstrakcję epizodów (demonstracji)
+    3. Przetworzenie obrazów, akcji i stanów
+    4. Zapis do formatu HDF5
+    
+    Każdy epizod zawiera:
+    - Sekwencję obrazów z kamer (T klatek)
+    - Sekwencję stanów proprioceptywnych (pozycje stawów)
+    - Sekwencję akcji (komendy dla robota)
+    - Instrukcję tekstową (language annotation)
+    """
+    
     def __init__(self, repo_id: str, root: str = None, image_dtype: str = "to_unit8") -> None:
+        """
+        Inicjalizacja procesora.
+        
+        Args:
+            repo_id: Identyfikator datasetu (nazwa folderu lub HuggingFace repo)
+            root: Główny katalog z danymi (jeśli None, użyje domyślnej ścieżki HF)
+            image_dtype: Typ danych dla obrazów ('to_unit8' dla uint8 [0-255])
+        """
         self.image_dtype = image_dtype
+        # Załaduj dataset LeRobot z video backend pyav (szybsze dekodowanie)
         self.dataset = LeRobotDataset(repo_id=repo_id, root=root, video_backend="pyav")
 
     def process_episode(self, episode_index: int) -> dict:
-        """Process a single episode to extract camera images, state, and action."""
+        """
+        Przetworzenie pojedynczego epizodu.
+        
+        OPIS PO POLSKU:
+        Ekstrahuje wszystkie kroki (steps) z epizodu i organizuje w słownik.
+        
+        Args:
+            episode_index: Numer epizodu do przetworzenia (0-indexed)
+            
+        Returns:
+            dict zawierający:
+                'observation/image': Lista obrazów RGB [T, H, W, 3]
+                'observation/state': Lista stanów proprio [T, D]
+                'action': Lista akcji [T, A]
+                'instruction': Instrukcja tekstowa (str)
+        
+        Process a single episode to extract camera images, state, and action.
+        """
+        # Pobierz zakres indexów dla tego epizodu
+        # LeRobot przechowuje: from_idx = początek epizodu, to_idx = koniec epizodu
         from_idx = self.dataset.episode_data_index["from"][episode_index].item()
         to_idx = self.dataset.episode_data_index["to"][episode_index].item()
 
-        episode = defaultdict(list)
-        cameras = defaultdict(list)
+        # Słowniki do gromadzenia danych
+        episode = defaultdict(list)  # Główne dane (state, action)
+        cameras = defaultdict(list)  # Obrazy z różnych kamer
 
+        # Iteruj przez wszystkie kroki w epizodzie
         for step_idx in tqdm(
-            range(from_idx, to_idx), desc=f"Episode {episode_index}", position=1, leave=False, dynamic_ncols=True
+            range(from_idx, to_idx), 
+            desc=f"Episode {episode_index}", 
+            position=1, 
+            leave=False, 
+            dynamic_ncols=True
         ):
 
+            # Pobierz jeden krok z datasetu
             step = self.dataset[step_idx]
 
+            # Ekstrakcja obrazów z wszystkich kamer
+            # Format klucza: "observation.image.{camera_name}"
+            # Przykłady: observation.image.top, observation.image.wrist
             image_dict = {
-                key.split(".")[2]: np.transpose(
-                    (value.numpy() * 255).astype(np.uint8), (1, 2, 0)
+                key.split(".")[2]: np.transpose(  # Nazwa kamery (np. "top")
+                    (value.numpy() * 255).astype(np.uint8),  # [0,1] → [0,255] uint8
+                    (1, 2, 0)  # [C, H, W] → [H, W, C] (OpenCV format)
                 )
                 for key, value in step.items()
                 if key.startswith("observation.image") and len(key.split(".")) >= 3
