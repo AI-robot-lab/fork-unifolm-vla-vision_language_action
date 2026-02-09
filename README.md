@@ -6,7 +6,7 @@
   </p>
 <div align="center">
   <p align="right">
-    <span> 🌎English </span> | <a href="README_cn.md"> 🇨🇳中文 </a>
+    <span> 🌎English </span> | <a href="README_cn.md"> 🇨🇳中文 </a> | <a href="README_pl.md"> 🇵🇱Polski </a>
   </p>
 </div>
 
