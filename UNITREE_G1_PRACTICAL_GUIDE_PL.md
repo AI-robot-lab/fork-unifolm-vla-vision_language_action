@@ -1141,7 +1141,7 @@ instructions = [
 
 **Roles:**
 - Robot A: Zbiera śmieci do worka
-- Robot B: Trzyma worek otwartyo
+- Robot B: Trzyma worek otwarty
 
 **Demonstracje:**
 - Zbierz demonstracje z perspektywy każdego robota
