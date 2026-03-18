@@ -23,15 +23,15 @@ KeyExample = Tuple[Key, Example]
 
 
 class MultiThreadedDatasetBuilder(tfds.core.GeneratorBasedBuilder):
-    """DatasetBuilder for example dataset."""
-    N_WORKERS = 10                  # number of parallel workers for data conversion
-    MAX_PATHS_IN_MEMORY = 100       # number of paths converted & stored in memory before writing to disk
-                                    # -> the higher the faster / more parallel conversion, adjust based on avilable RAM
-                                    # note that one path may yield multiple episodes and adjust accordingly
-    PARSE_FCN = None                # needs to be filled with path-to-record-episode parse function
+    """Konstruktor zbioru danych z wielowątkowym przetwarzaniem."""
+    N_WORKERS = 10                  # liczba równoległych workerów do konwersji danych
+    MAX_PATHS_IN_MEMORY = 100       # liczba ścieżek konwertowanych i przechowywanych w pamięci przed zapisem na dysk
+                                    # -> im wyższa wartość, tym szybsza / bardziej równoległa konwersja, dostosuj do dostępnej pamięci RAM
+                                    # uwaga: jedna ścieżka może generować wiele epizodów – dostosuj odpowiednio
+    PARSE_FCN = None                # należy uzupełnić funkcją parsowania ścieżki do nagranego epizodu
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
-        """Define data splits."""
+        """Definiuje podziały danych."""
         split_paths = self._split_paths()
         return {split: type(self).PARSE_FCN(paths=split_paths[split]) for split in split_paths}
 
@@ -43,8 +43,8 @@ class MultiThreadedDatasetBuilder(tfds.core.GeneratorBasedBuilder):
             dl_manager: download.DownloadManager,
             download_config: download.DownloadConfig,
     ) -> None:
-        """Generate all splits and returns the computed split infos."""
-        assert self.PARSE_FCN is not None       # need to overwrite parse function
+        """Generuje wszystkie podziały danych i zwraca obliczone informacje o podziale."""
+        assert self.PARSE_FCN is not None       # konieczne nadpisanie funkcji parsowania
         split_builder = ParallelSplitBuilder(
             split_dict=self.info.splits,
             features=self.info.features,
@@ -67,7 +67,7 @@ class MultiThreadedDatasetBuilder(tfds.core.GeneratorBasedBuilder):
         )
         dataset_builder._check_split_names(split_generators.keys())
 
-        # Start generating data for all splits
+        # Rozpoczęcie generowania danych dla wszystkich podziałów
         path_suffix = file_adapters.ADAPTER_FOR_FORMAT[
             self.info.file_format
         ].FILE_SUFFIX
@@ -75,8 +75,8 @@ class MultiThreadedDatasetBuilder(tfds.core.GeneratorBasedBuilder):
         split_info_futures = []
         for split_name, generator in utils.tqdm(
                 split_generators.items(),
-                desc="Generating splits...",
-                unit=" splits",
+                desc="Generowanie podziałów...",
+                unit=" podziały",
                 leave=False,
         ):
             filename_template = naming.ShardedFileTemplate(
@@ -93,16 +93,16 @@ class MultiThreadedDatasetBuilder(tfds.core.GeneratorBasedBuilder):
             )
             split_info_futures.append(future)
 
-        # Finalize the splits (after apache beam completed, if it was used)
+        # Finalizacja podziałów (po zakończeniu apache beam, jeśli był używany)
         split_infos = [future.result() for future in split_info_futures]
 
-        # Update the info object with the splits.
+        # Aktualizacja obiektu info o informacje o podziałach.
         split_dict = splits_lib.SplitDict(split_infos)
         self.info.set_splits(split_dict)
 
 
 class _SplitInfoFuture:
-    """Future containing the `tfds.core.SplitInfo` result."""
+    """Future zawierający wynik `tfds.core.SplitInfo`."""
 
     def __init__(self, callback: Callable[[], splits_lib.SplitInfo]):
         self._callback = callback
@@ -116,8 +116,8 @@ def parse_examples_from_generator(paths, fcn, split_name, total_num_examples, fe
     outputs = []
     for sample in utils.tqdm(
             generator,
-            desc=f'Generating {split_name} examples...',
-            unit=' examples',
+            desc=f'Generowanie przykładów dla {split_name}...',
+            unit=' przykłady',
             total=total_num_examples,
             leave=False,
             mininterval=1.0,
@@ -127,7 +127,7 @@ def parse_examples_from_generator(paths, fcn, split_name, total_num_examples, fe
         try:
             example = features.encode_example(example)
         except Exception as e:  # pylint: disable=broad-except
-            utils.reraise(e, prefix=f'Failed to encode example:\n{example}\n')
+            utils.reraise(e, prefix=f'Nie udało się zakodować przykładu:\n{example}\n')
         outputs.append((key, serializer.serialize_example(example)))
     return outputs
 
@@ -147,16 +147,16 @@ class ParallelSplitBuilder(split_builder_lib.SplitBuilder):
             filename_template: naming.ShardedFileTemplate,
             disable_shuffling: bool,
     ) -> _SplitInfoFuture:
-        """Split generator for example generators.
+        """Generator podziału dla generatorów przykładów.
 
         Args:
           split_name: str,
           generator: Iterable[KeyExample],
-          filename_template: Template to format the filename for a shard.
-          disable_shuffling: Specifies whether to shuffle the examples,
+          filename_template: Szablon do formatowania nazwy pliku dla fragmentu (shard).
+          disable_shuffling: Określa, czy mieszać przykłady.
 
         Returns:
-          future: The future containing the `tfds.core.SplitInfo`.
+          future: Future zawierający `tfds.core.SplitInfo`.
         """
         total_num_examples = None
         serialized_info = self._features.get_serialized_info()
@@ -169,13 +169,13 @@ class ParallelSplitBuilder(split_builder_lib.SplitBuilder):
             shard_config=self._shard_config,
         )
 
-        del generator  # use parallel generators instead
+        del generator  # zamiast tego używaj równoległych generatorów
         paths = self._split_paths[split_name]
-        path_lists = chunk_max(paths, self._n_workers, self._max_paths_in_memory)  # generate N file lists
-        print(f"Generating with {self._n_workers} workers!")
+        path_lists = chunk_max(paths, self._n_workers, self._max_paths_in_memory)  # generuj N list plików
+        print(f"Generowanie z użyciem {self._n_workers} workerów!")
         pool = Pool(processes=self._n_workers)
         for i, paths in enumerate(path_lists):
-            print(f"Processing chunk {i + 1} of {len(path_lists)}.")
+            print(f"Przetwarzanie fragmentu {i + 1} z {len(path_lists)}.")
             results = pool.map(
                 partial(
                     parse_examples_from_generator,
@@ -187,15 +187,15 @@ class ParallelSplitBuilder(split_builder_lib.SplitBuilder):
                 ),
                 paths
             )
-            # write results to shuffler --> this will automatically offload to disk if necessary
-            print("Writing conversion results...")
+            # zapis wyników do shufflera --> w razie potrzeby zostanie automatycznie przeniesiony na dysk
+            print("Zapisywanie wyników konwersji...")
             for result in itertools.chain(*results):
                 key, serialized_example = result
                 writer._shuffler.add(key, serialized_example)
                 writer._num_examples += 1
         pool.close()
 
-        print("Finishing split conversion...")
+        print("Finalizacja konwersji podziału...")
         shard_lengths, total_size = writer.finalize()
 
         split_info = splits_lib.SplitInfo(
@@ -208,11 +208,11 @@ class ParallelSplitBuilder(split_builder_lib.SplitBuilder):
 
 
 def dictlist2listdict(DL):
-    " Converts a dict of lists to a list of dicts "
+    " Konwertuje słownik list na listę słowników "
     return [dict(zip(DL, t)) for t in zip(*DL.values())]
 
 def chunks(l, n):
-    """Yield n number of sequential chunks from l."""
+    """Generuje n kolejnych fragmentów listy l."""
     d, r = divmod(len(l), n)
     for i in range(n):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)

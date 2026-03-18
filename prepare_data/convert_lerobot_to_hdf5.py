@@ -186,7 +186,7 @@ class LeRobotDataProcessor:
         episode["task"] = step["task"]
         episode["episode_length"] = to_idx - from_idx
 
-        # Data configuration for later use
+        # Konfiguracja danych do późniejszego użycia
         episode["data_cfg"] = {
             "camera_names": list(image_dict.keys()),
             "cam_height": cam_height,
@@ -207,7 +207,7 @@ class H5Writer:
         os.makedirs(output_dir, exist_ok=True)
 
     def write_to_h5(self, episode: dict) -> None:
-        """Write episode data to HDF5 file."""
+        """Zapis danych epizodu do pliku HDF5."""
 
         episode_length = episode["episode_length"]
         episode_index = episode["episode_index"]
@@ -220,7 +220,7 @@ class H5Writer:
         task = episode["task"]
         data_cfg = episode["data_cfg"]
 
-        # Prepare data dictionary
+        # Przygotowanie słownika danych
         data_dict = {
             "/observations/qpos": [state],
             "/observations/ee_qpos": [ee_state],
@@ -233,14 +233,14 @@ class H5Writer:
         h5_path = os.path.join(self.output_dir, f"episode_{episode_index}.hdf5")
 
         with h5py.File(h5_path, "w", rdcc_nbytes=1024**2 * 2, libver="latest") as root:
-            # Set attributes
+            # Ustawienie atrybutów
             root.attrs["sim"] = False
 
-            # Create datasets
+            # Tworzenie zbiorów danych
             obs = root.create_group("observations")
             image = obs.create_group("images")
 
-            # Write camera images
+            # Zapis obrazów z kamer
             for cam_name, images in cameras.items():
                 image.create_dataset(
                     cam_name,
@@ -251,13 +251,13 @@ class H5Writer:
                 )
                 # root[f'/observations/images/{cam_name}'][...] = images
 
-            # Write state and action data
+            # Zapis danych o stanach i akcjach
             obs.create_dataset("qpos", (episode_length, data_cfg["state_dim"]), dtype="float32", compression="gzip")
             obs.create_dataset("ee_qpos", (episode_length, data_cfg["ee_state_dim"]), dtype="float32", compression="gzip")
             obs.create_dataset("qvel", (episode_length, data_cfg["state_dim"]), dtype="float32", compression="gzip")
             root.create_dataset("action", (episode_length, data_cfg["action_dim"]), dtype="float32", compression="gzip")
             root.create_dataset("ee_action", (episode_length, data_cfg["ee_action_dim"]), dtype="float32", compression="gzip")
-            # Write metadata
+            # Zapis metadanych
             root.create_dataset("is_edited", (1,), dtype="uint8")
             substep_reasonings = root.create_dataset(
                 "substep_reasonings", (episode_length,), dtype=h5py.string_dtype(encoding="utf-8"), compression="gzip"
@@ -265,27 +265,27 @@ class H5Writer:
             root.create_dataset("language_raw", data=task)
             substep_reasonings[:] = [task] * episode_length
 
-            # Write additional data
+            # Zapis dodatkowych danych
             for name, array in data_dict.items():
                 root[name][...] = array
 
 
 
 def lerobot_to_h5(repo_id: str, output_dir: Path, root: str = None) -> None:
-    """Main function to process and write LeRobot data to HDF5 format."""
+    """Główna funkcja do przetwarzania i zapisu danych LeRobot do formatu HDF5."""
 
-    # Initialize data processor and H5 writer
+    # Inicjalizacja procesora danych i obiektu zapisującego HDF5
     data_processor = LeRobotDataProcessor(
         repo_id, root, image_dtype="to_unit8"
-    )  # image_dtype Options: "to_unit8", "to_bytes"
+    )  # opcje image_dtype: "to_unit8", "to_bytes"
     h5_writer = H5Writer(output_dir)
 
-    # Process each episode
+    # Przetwarzanie każdego epizodu
     for episode_index in tqdm(
-        range(data_processor.dataset.num_episodes), desc="Episodes", position=0, dynamic_ncols=True
+        range(data_processor.dataset.num_episodes), desc="Epizody", position=0, dynamic_ncols=True
     ):
         if os.path.exists(os.path.join(output_dir, f"episode_{episode_index}.hdf5")):
-            print(f"Episode {episode_index} already exists")
+            print(f"Epizod {episode_index} już istnieje")
             continue
         episode = data_processor.process_episode(episode_index)
         h5_writer.write_to_h5(episode)

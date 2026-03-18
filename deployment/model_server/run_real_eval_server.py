@@ -25,44 +25,45 @@ unifolm_vla_IMAGE_SIZE = 224
 
 def check_image_format(image: Any) -> None:
     """
-    Validate input image format.
+    Weryfikacja formatu wejściowego obrazu.
 
     Args:
-        image: Image to check
+        image: Obraz do sprawdzenia
 
     Raises:
-        AssertionError: If image format is invalid
+        AssertionError: Jeśli format obrazu jest nieprawidłowy
     """
     is_numpy_array = isinstance(image, np.ndarray)
     has_correct_shape = len(image.shape) == 3 and image.shape[-1] == 3
     has_correct_dtype = image.dtype == np.uint8
 
     assert is_numpy_array and has_correct_shape and has_correct_dtype, (
-        "Incorrect image format detected! Make sure that the input image is a "
-        "numpy array with shape (H, W, 3) and dtype np.uint8!"
+        "Wykryto nieprawidłowy format obrazu! Upewnij się, że obraz wejściowy jest "
+        "tablicą numpy o kształcie (H, W, 3) i typie danych np.uint8!"
     )
 
 
 def resize_image_for_policy(img: np.ndarray, resize_size: Union[int, Tuple[int, int]]) -> np.ndarray:
     """
-    Resize an image to match the policy's expected input size.
+    Zmiana rozmiaru obrazu do oczekiwanego rozmiaru wejściowego polityki.
 
-    Uses the same resizing scheme as in the training data pipeline for distribution matching.
+    Używa tego samego schematu zmiany rozmiaru co w pipeline danych treningowych,
+    aby zachować zgodność rozkładów.
 
     Args:
-        img: Numpy array containing the image
-        resize_size: Target size as int (square) or (height, width) tuple
+        img: Tablica numpy zawierająca obraz
+        resize_size: Docelowy rozmiar jako int (kwadrat) lub krotka (wysokość, szerokość)
 
     Returns:
-        np.ndarray: The resized image
+        np.ndarray: Obraz po zmianie rozmiaru
     """
     assert isinstance(resize_size, int) or isinstance(resize_size, tuple)
     if isinstance(resize_size, int):
         resize_size = (resize_size, resize_size)
 
-    # Resize using the same pipeline as in RLDS dataset builder
-    img = tf.image.encode_jpeg(img)  # Encode as JPEG
-    img = tf.io.decode_image(img, expand_animations=False, dtype=tf.uint8)  # Decode back
+    # Zmiana rozmiaru przy użyciu tego samego pipeline co w RLDS dataset builder
+    img = tf.image.encode_jpeg(img)  # Kodowanie jako JPEG
+    img = tf.io.decode_image(img, expand_animations=False, dtype=tf.uint8)  # Dekodowanie
     img = tf.image.resize(img, resize_size, method="lanczos3", antialias=True)
     img = tf.cast(tf.clip_by_value(tf.round(img), 0, 255), tf.uint8)
 
@@ -70,30 +71,30 @@ def resize_image_for_policy(img: np.ndarray, resize_size: Union[int, Tuple[int, 
 
 def crop_and_resize(image: tf.Tensor, crop_scale: float, batch_size: int) -> tf.Tensor:
     """
-    Center-crop an image and resize it back to original dimensions.
+    Kadrowanie środkowe obrazu i przywrócenie jego oryginalnych wymiarów.
 
-    Uses the same logic as in the training data pipeline for distribution matching.
+    Używa tej samej logiki co w pipeline danych treningowych, aby zachować zgodność rozkładów.
 
     Args:
-        image: TF Tensor of shape (batch_size, H, W, C) or (H, W, C) with values in [0,1]
-        crop_scale: Area of center crop relative to original image
-        batch_size: Batch size
+        image: Tensor TF o kształcie (batch_size, H, W, C) lub (H, W, C) z wartościami w [0, 1]
+        crop_scale: Pole kadru centralnego względem oryginalnego obrazu
+        batch_size: Rozmiar batcha
 
     Returns:
-        tf.Tensor: The cropped and resized image
+        tf.Tensor: Obraz po kadrowaniu i zmianie rozmiaru
     """
-    # Handle 3D inputs by adding batch dimension if needed
-    assert image.shape.ndims in (3, 4), "Image must be 3D or 4D tensor"
+    # Obsługa wejść 3D poprzez dodanie wymiaru batcha, jeśli potrzebne
+    assert image.shape.ndims in (3, 4), "Obraz musi być tensorem 3D lub 4D"
     expanded_dims = False
     if image.shape.ndims == 3:
         image = tf.expand_dims(image, axis=0)
         expanded_dims = True
 
-    # Calculate crop dimensions (note: we use sqrt(crop_scale) for h/w)
+    # Obliczanie wymiarów kadru (uwaga: używamy sqrt(crop_scale) dla h/w)
     new_heights = tf.reshape(tf.clip_by_value(tf.sqrt(crop_scale), 0, 1), shape=(batch_size,))
     new_widths = tf.reshape(tf.clip_by_value(tf.sqrt(crop_scale), 0, 1), shape=(batch_size,))
 
-    # Create bounding box for the crop
+    # Tworzenie obwiedni dla kadru
     height_offsets = (1 - new_heights) / 2
     width_offsets = (1 - new_widths) / 2
     bounding_boxes = tf.stack(
@@ -106,12 +107,12 @@ def crop_and_resize(image: tf.Tensor, crop_scale: float, batch_size: int) -> tf.
         axis=1,
     )
 
-    # Apply crop and resize
+    # Zastosowanie kadrowania i zmiany rozmiaru
     image = tf.image.crop_and_resize(
         image, bounding_boxes, tf.range(batch_size), (unifolm_vla_IMAGE_SIZE, unifolm_vla_IMAGE_SIZE)
     )
 
-    # Remove batch dimension if it was added
+    # Usunięcie wymiaru batcha, jeśli został dodany
     if expanded_dims:
         image = image[0]
 
@@ -119,34 +120,34 @@ def crop_and_resize(image: tf.Tensor, crop_scale: float, batch_size: int) -> tf.
 
 def center_crop_image(image: Union[np.ndarray, Image.Image]) -> Image.Image:
     """
-    Center crop an image to match training data distribution.
+    Kadrowanie środkowe obrazu w celu dopasowania do rozkładu danych treningowych.
 
     Args:
-        image: Input image (PIL or numpy array)
+        image: Wejściowy obraz (PIL lub tablica numpy)
 
     Returns:
-        Image.Image: Cropped PIL Image
+        Image.Image: Przycięty obraz PIL
     """
     batch_size = 1
     crop_scale = 0.9
 
-    # Convert to TF Tensor if needed
+    # Konwersja do tensora TF, jeśli potrzebne
     if not isinstance(image, tf.Tensor):
         image = tf.convert_to_tensor(np.array(image))
 
     orig_dtype = image.dtype
 
-    # Convert to float32 in range [0,1]
+    # Konwersja do float32 w zakresie [0,1]
     image = tf.image.convert_image_dtype(image, tf.float32)
 
-    # Apply center crop and resize
+    # Zastosowanie kadrowania środkowego i zmiany rozmiaru
     image = crop_and_resize(image, crop_scale, batch_size)
 
-    # Convert back to original data type
+    # Konwersja z powrotem do oryginalnego typu danych
     image = tf.clip_by_value(image, 0, 1)
     image = tf.image.convert_image_dtype(image, orig_dtype, saturate=True)
 
-    # Convert to PIL Image
+    # Konwersja do obrazu PIL
     return Image.fromarray(image.numpy()).convert("RGB")
 
 def unnormalize_action(normalized_actions: np.ndarray, action_norm_stats: Dict[str, Any]) -> np.ndarray:
@@ -167,14 +168,14 @@ def unnormalize_action(normalized_actions: np.ndarray, action_norm_stats: Dict[s
 
 def normalize_proprio(proprio: np.ndarray, norm_stats: Dict[str, Any]) -> np.ndarray:
     """
-    Normalize proprioception data to match training distribution.
+    Normalizacja danych proprioceptywnych do rozkładu danych treningowych.
 
     Args:
-        proprio: Raw proprioception data
-        norm_stats: Normalization statistics
+        proprio: Surowe dane proprioceptywne
+        norm_stats: Statystyki normalizacyjne
 
     Returns:
-        np.ndarray: Normalized proprioception data
+        np.ndarray: Znormalizowane dane proprioceptywne
     """
     if ACTION_PROPRIO_NORMALIZATION_TYPE == NormalizationType.BOUNDS:
         mask = norm_stats.get("mask", np.ones_like(norm_stats["min"], dtype=bool))
@@ -183,7 +184,7 @@ def normalize_proprio(proprio: np.ndarray, norm_stats: Dict[str, Any]) -> np.nda
         mask = norm_stats.get("mask", np.ones_like(norm_stats["q01"], dtype=bool))
         proprio_high, proprio_low = np.array(norm_stats["q99"]), np.array(norm_stats["q01"])
     else:
-        raise ValueError("Unsupported action/proprio normalization type detected!")
+        raise ValueError("Wykryto nieobsługiwany typ normalizacji akcji/propriocepcji!")
 
     normalized_proprio = np.clip(
         np.where(
@@ -198,17 +199,16 @@ def normalize_proprio(proprio: np.ndarray, norm_stats: Dict[str, Any]) -> np.nda
     return normalized_proprio
 
 class Unifolm_VLA_Server:
-    """FastAPI服务器, 用于VLA模型推理"""
+    """Serwer FastAPI do inferencji modelu VLA"""
     
     def __init__(self, args):
         self.args = args
-        logging.info("Loading VLA model from: %s", args.ckpt_path)
-        
+        logging.info("Ładowanie modelu VLA z: %s", args.ckpt_path)
         # TODO: should auto detect framework from model path
         vla = baseframework.from_pretrained(args.ckpt_path, vlm_pretrained_path=args.vlm_pretrained_path)
 
         if args.use_bf16:
-            logging.info("Converting model to bfloat16")
+            logging.info("Konwersja modelu do bfloat16")
             vla = vla.to(torch.bfloat16)
         
         vla = vla.to("cuda").eval()
@@ -216,33 +216,33 @@ class Unifolm_VLA_Server:
         self.norm_stats_action = vla.norm_stats[self.args.unnorm_key]['action']
         self.norm_stats_proprio = vla.norm_stats[self.args.unnorm_key]['proprio']
         self.processor = vla.qwen_vl_interface.processor
-        logging.info("Model loaded successfully")
+        logging.info("Model załadowany pomyślnie")
 
     def prepare_images_for_vla(self, images: List[np.ndarray], cfg: Any) -> List[Image.Image]:
         """
-        Prepare images for VLA input by resizing and cropping as needed.
+        Przygotowanie obrazów do wejścia modelu VLA poprzez zmianę rozmiaru i kadrowanie.
 
         Args:
-            images: List of input images as numpy arrays
-            cfg: Configuration object with parameters
+            images: Lista wejściowych obrazów jako tablice numpy
+            cfg: Obiekt konfiguracyjny z parametrami
 
         Returns:
-            List[Image.Image]: Processed images ready for the model
+            List[Image.Image]: Przetworzone obrazy gotowe dla modelu
         """
         processed_images = []
 
         for image in images:
-            # Validate format
+            # Weryfikacja formatu
             check_image_format(image)
 
-            # Resize if needed
+            # Zmiana rozmiaru, jeśli potrzebne
             if image.shape != (unifolm_vla_IMAGE_SIZE, unifolm_vla_IMAGE_SIZE, 3):
                 image = resize_image_for_policy(image, unifolm_vla_IMAGE_SIZE)
 
-            # Convert to PIL image
+            # Konwersja do obrazu PIL
             pil_image = Image.fromarray(image).convert("RGB")
 
-            # Apply center crop if configured
+            # Zastosowanie kadrowania środkowego, jeśli skonfigurowano
             if cfg.center_crop:
                 pil_image = center_crop_image(pil_image)
 
@@ -255,8 +255,9 @@ class Unifolm_VLA_Server:
         try:
             t1 = time.time()
             if double_encode := "encoded" in payload:
-                # Support cases where `json_numpy` is hard to install, and numpy arrays are "double-encoded" as strings
-                assert len(payload.keys()) == 1, "Only uses encoded payload!"
+                # Obsługa przypadków, gdy `json_numpy` jest trudne do zainstalowania,
+                # a tablice numpy są "podwójnie kodowane" jako ciągi znaków
+                assert len(payload.keys()) == 1, "Dozwolone jest tylko zakodowane payload!"
                 payload = json.loads(payload["encoded"])
 
             observations = payload['observations']
@@ -272,7 +273,7 @@ class Unifolm_VLA_Server:
                 self.norm_stats_action = self.vla.norm_stats[task_name]['action']
                 self.norm_stats_proprio = self.vla.norm_stats[task_name]['proprio']
 
-            # Process images
+            # Przetwarzanie obrazów
             all_images = self.prepare_images_for_vla(all_images, self.args)
             lang = instruction.lower()
             text = f"The task is \"{lang}\"."
@@ -327,80 +328,80 @@ class Unifolm_VLA_Server:
         except:  
             logging.error(traceback.format_exc())
             logging.warning(
-                "Your request threw an error; make sure your request complies with the expected format:\n"
+                "Twoje żądanie spowodowało błąd; upewnij się, że żądanie jest zgodne z oczekiwanym formatem:\n"
                 "{'observation': dict, 'instruction': str}\n"
             )
             return "error"
         
     def run(self, host: str = "0.0.0.0", port: int = 8777) -> None:
-        """启动FastAPI服务器"""
-        logging.info("Creating FastAPI server...")
+        """Uruchomienie serwera FastAPI"""
+        logging.info("Tworzenie serwera FastAPI...")
         self.app = FastAPI(
             title="VLA Model Server",
-            description="VLA (Vision-Language-Action) Model Inference API",
+            description="API inferencji modelu VLA (Vision-Language-Action)",
             version="1.0.0"
         )
 
         self.app.post("/act")(self.get_server_action)
         
-        logging.info(f"Starting server on http://{host}:{port}")
-        logging.info(f"API endpoint: POST http://{host}:{port}/act")
-        logging.info("Press Ctrl+C to stop the server")
+        logging.info(f"Uruchamianie serwera pod adresem http://{host}:{port}")
+        logging.info(f"Punkt końcowy API: POST http://{host}:{port}/act")
+        logging.info("Naciśnij Ctrl+C, aby zatrzymać serwer")
 
         uvicorn.run(self.app, host=host, port=port, log_level="info")
 
 
 def deploy(args):
-    """部署VLA模型服务器"""
+    """Wdrożenie serwera modelu VLA"""
     server = Unifolm_VLA_Server(args)
     server.run(host=args.host, port=args.port)
 
 def build_argparser():
-    """构建命令行参数解析器"""
+    """Budowanie parsera argumentów wiersza poleceń"""
     parser = argparse.ArgumentParser(
-        description="部署VLA模型为FastAPI服务器",
+        description="Wdrożenie modelu VLA jako serwera FastAPI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
         "--ckpt_path", 
         type=str, 
         default="/path/to/your/ckpt.pt",
-        help="模型检查点路径或HuggingFace模型名称"
+        help="Ścieżka do punktu kontrolnego modelu lub nazwa modelu na HuggingFace"
     )
     parser.add_argument(
         "--vlm_pretrained_path",
         type=str,
         default=None,
-        help="VLM模型检查点路径或HuggingFace模型名称"
+        help="Ścieżka do punktu kontrolnego modelu VLM lub nazwa modelu na HuggingFace"
     )
     parser.add_argument(
         "--unnorm_key",
         type=str,
         default="new_embodiment",
-        help="数据集名称"
+        help="Nazwa zbioru danych"
     )
     parser.add_argument(
         "--host",
         type=str,
         default="0.0.0.0",
-        help="服务器监听地址"
+        help="Adres nasłuchiwania serwera"
     )
     parser.add_argument(
         "--port", 
         type=int, 
         default=8777,
-        help="服务器监听端口"
+        help="Port nasłuchiwania serwera"
     )
     parser.add_argument(
         "--use_bf16", 
         action="store_true",
         default=True,
-        help="是否使用bfloat16精度"
+        help="Czy używać precyzji bfloat16"
     )
     parser.add_argument(
         "--center_crop", 
         action="store_true",
-        help="是否使用双重编码"
+        help="Czy stosować podwójne kodowanie"
     )
 
     return parser

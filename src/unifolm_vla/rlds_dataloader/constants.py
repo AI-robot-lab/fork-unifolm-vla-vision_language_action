@@ -22,24 +22,24 @@ STRUKTURA:
 - Stałe dla różnych robotów: G1, LIBERO, ALOHA, etc.
 - Automatyczna detekcja platformy na podstawie argumentów CLI
 
-Important constants for VLA training and evaluation.
+Kluczowe stałe dla trenowania i ewaluacji VLA.
 
-Attempts to automatically identify the correct constants to set based on the Python command used to launch
-training or evaluation. If it is unclear, defaults to using the LIBERO simulation benchmark constants.
+Próbuje automatycznie zidentyfikować właściwe stałe na podstawie polecenia Python użytego do uruchomienia
+treningu lub ewaluacji. W razie niejasności domyślnie używa stałych środowiska symulacyjnego LIBERO.
 """
 import sys
 from enum import Enum
 
-# Llama 2 token constants
+# Stałe tokenów Llama 2
 # (Nie używane w UnifoLM-VLA, pozostawione dla kompatybilności)
 IGNORE_INDEX = -100
 ACTION_TOKEN_BEGIN_IDX = 31743
 STOP_INDEX = 2  # '</s>'
 
-# lisa method
+# Metoda lisa
 ACTION_TOKEN_IDX = 32001
 
-# Defines supported normalization schemes for action and proprioceptive state.
+# Definiuje obsługiwane schematy normalizacji dla akcji i stanu proprioceptywnego.
 class NormalizationType(str, Enum):
     """
     Typy normalizacji dla akcji i stanu proprioceptywnego.
@@ -74,13 +74,13 @@ class NormalizationType(str, Enum):
     - W pozostałych przypadkach → NORMAL
     """
     # fmt: off
-    NORMAL = "normal"               # Normalize to Mean = 0, Stdev = 1
-    BOUNDS = "bounds"               # Normalize to Interval = [-1, 1]
-    BOUNDS_Q99 = "bounds_q99"       # Normalize [quantile_01, ..., quantile_99] --> [-1, ..., 1]
+    NORMAL = "normal"               # Normalizacja do Średnia = 0, Odchylenie = 1
+    BOUNDS = "bounds"               # Normalizacja do Przedziału = [-1, 1]
+    BOUNDS_Q99 = "bounds_q99"       # Normalizacja [kwantyl_01, ..., kwantyl_99] --> [-1, ..., 1]
     # fmt: on
 
 
-# Define constants for each robot platform
+# Definiuje stałe dla każdej platformy robotycznej
 # ============================================
 # STAŁE DLA RÓŻNYCH PLATFORM ROBOTYCZNYCH
 # ============================================
@@ -285,10 +285,10 @@ def detect_robot_platform():
         return "G1_EE_6D"
 
 
-# Determine which robot platform to use
+# Określenie platformy robotycznej do użycia
 ROBOT_PLATFORM = detect_robot_platform()
 
-# Set the appropriate constants based on the detected platform
+# Ustawienie odpowiednich stałych na podstawie wykrytej platformy
 # OPIS PO POLSKU:
 # Na podstawie wykrytej platformy, wybieramy odpowiednie stałe.
 # Te stałe będą używane przez cały framework podczas treningu i inferencji.
@@ -327,12 +327,12 @@ ACTION_PROPRIO_NORMALIZATION_TYPE = constants["ACTION_PROPRIO_NORMALIZATION_TYPE
 # Jeśli widzisz nieoczekiwane wartości, prawdopodobnie:
 # 1. Źle wykryto platformę (sprawdź nazwę w argumentach CLI)
 # 2. Użyto złych stałych (ustaw ręcznie poniżej)
-print(f"Using {ROBOT_PLATFORM} constants:")
-print(f" in constants.py NUM_ACTIONS_CHUNK = {NUM_ACTIONS_CHUNK}")
+print(f"Używanie stałych {ROBOT_PLATFORM}:")
+print(f" w constants.py NUM_ACTIONS_CHUNK = {NUM_ACTIONS_CHUNK}")
 print(f"  ACTION_DIM = {ACTION_DIM}")
 print(f"  PROPRIO_DIM = {PROPRIO_DIM}")
 print(f"  ACTION_PROPRIO_NORMALIZATION_TYPE = {ACTION_PROPRIO_NORMALIZATION_TYPE}")
-print("If needed, manually set the correct constants in `training/vla/constants.py`!")
+print("W razie potrzeby ustaw ręcznie właściwe stałe w `training/vla/constants.py`!")
 
 # UWAGA DLA STUDENTÓW:
 # =====================
